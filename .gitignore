@@ -7,3 +7,15 @@ env/
 *.mp4
 *.avi
 .DS_Store
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.svg
+*.ico
+*.tiff
+*.tif
