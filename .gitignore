@@ -19,3 +19,6 @@ env/
 *.ico
 *.tiff
 *.tif
+
+# Preserve empty folder structure via .gitkeep
+!.gitkeep

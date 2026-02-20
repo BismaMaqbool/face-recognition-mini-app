@@ -2,21 +2,41 @@ import argparse
 import cv2
 import sys
 import os
+import time
 import numpy as np
 from deepface import DeepFace
 
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+PROCESS_EVERY_N_FRAMES = 5
+MATCH_THRESHOLD = 0.5
+MIN_FACE_SIZE = (30, 30)
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 def parse_args():
-    parser = argparse.ArgumentParser(description="Face Detection + Verification Mini App")
-    parser.add_argument("--source", default="0",
-                        help="Video source: 0 for webcam, or path to video file")
-    parser.add_argument("--db", default="./known_faces",
-                        help="Path to known faces database folder")
+    """Parse command-line arguments for video source and known-faces database."""
+    parser = argparse.ArgumentParser(
+        description="Face Detection + Verification Mini App"
+    )
+    parser.add_argument(
+        "--source", default="0",
+        help="Video source: 0 for webcam, or path to video file",
+    )
+    parser.add_argument(
+        "--db", default="./known_faces",
+        help="Path to known faces database folder",
+    )
     return parser.parse_args()
 
 
 def get_video_source(source_str):
-    """Convert source argument to int (webcam) or keep as string (file path)."""
+    """Convert source argument to int (webcam index) or validate file path."""
     try:
         return int(source_str)
     except ValueError:
@@ -26,15 +46,21 @@ def get_video_source(source_str):
         return source_str
 
 
+# ---------------------------------------------------------------------------
+# Database loading  (Phase 4)
+# ---------------------------------------------------------------------------
 def load_known_faces(db_path):
     """
-    Load face embeddings from the known_faces database folder.
+    Scan the known-faces folder and build an in-memory embedding database.
 
-    Args:
-        db_path: Path to the database folder (e.g., ./known_faces)
+    Expected structure:
+        db_path/
+            PersonName/
+                image1.jpg
+                image2.png
 
     Returns:
-        List of dictionaries: [{"name": "PersonName", "embedding": [...]}, ...]
+        List of dicts: [{"name": str, "embedding": np.ndarray}, ...]
     """
     known_faces = []
 
@@ -44,82 +70,80 @@ def load_known_faces(db_path):
 
     print("\nLoading known faces...")
 
-    # Iterate through person folders
-    for person_name in os.listdir(db_path):
+    person_count = 0
+
+    for person_name in sorted(os.listdir(db_path)):
         person_path = os.path.join(db_path, person_name)
 
         if not os.path.isdir(person_path):
             continue
 
-        # Iterate through images for this person
-        for img_file in os.listdir(person_path):
-            img_path = os.path.join(person_path, img_file)
+        person_count += 1
 
-            # Skip non-image files
-            if not img_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+        for img_file in os.listdir(person_path):
+            if not img_file.lower().endswith(IMAGE_EXTENSIONS):
                 continue
 
+            img_path = os.path.join(person_path, img_file)
+
             try:
-                # Extract embedding using DeepFace
                 embedding_objs = DeepFace.represent(
                     img_path=img_path,
                     model_name="Facenet",
-                    enforce_detection=False
+                    enforce_detection=False,
                 )
 
-                # DeepFace.represent returns a list; take the first face
                 if embedding_objs:
-                    embedding = embedding_objs[0]["embedding"]
                     known_faces.append({
                         "name": person_name,
-                        "embedding": np.array(embedding)
+                        "embedding": np.array(embedding_objs[0]["embedding"]),
                     })
-                    print(f"  ✓ Loaded: {person_name}/{img_file}")
+                    print(f"  Loaded: {person_name}/{img_file}")
 
             except Exception as e:
-                print(f"  ✗ Failed to load {person_name}/{img_file}: {e}")
+                print(f"  Failed: {person_name}/{img_file}: {e}")
 
-    print(f"\nTotal faces loaded: {len(known_faces)}")
+    print(f"\nLoaded {len(known_faces)} embedding(s) for {person_count} person(s).")
+
+    if not known_faces:
+        print("Warning: No embeddings loaded. All faces will be labeled 'Unknown'.")
+
     return known_faces
 
 
+# ---------------------------------------------------------------------------
+# Embedding comparison  (Phase 5 helpers)
+# ---------------------------------------------------------------------------
 def cosine_distance(embedding1, embedding2):
     """
-    Compute cosine distance between two embeddings.
-    Cosine distance = 1 - cosine_similarity
+    Compute cosine distance between two vectors.
 
-    Range: [0, 2] where 0 = identical, 2 = opposite
+    Returns a value in [0, 2] where 0 = identical, 2 = opposite.
+    Returns 1.0 (no match) when either vector has zero magnitude.
     """
-    embedding1 = np.array(embedding1)
-    embedding2 = np.array(embedding2)
-
-    # Compute cosine similarity
-    dot_product = np.dot(embedding1, embedding2)
     norm1 = np.linalg.norm(embedding1)
     norm2 = np.linalg.norm(embedding2)
 
-    cosine_sim = dot_product / (norm1 * norm2)
+    if norm1 == 0 or norm2 == 0:
+        return 1.0
 
-    # Return cosine distance
+    cosine_sim = np.dot(embedding1, embedding2) / (norm1 * norm2)
     return 1 - cosine_sim
 
 
-def find_best_match(face_embedding, known_faces, threshold=0.5):
+def find_best_match(face_embedding, known_faces, threshold=MATCH_THRESHOLD):
     """
-    Find the best matching known face using cosine distance.
+    Compare a face embedding against all known faces.
 
-    Args:
-        face_embedding: Embedding of the detected face
-        known_faces: List of known face dictionaries
-        threshold: Maximum distance to consider a match (default 0.5)
-
-    Returns:
-        Name of the matched person or "Unknown"
+    Returns the name of the closest match if the cosine distance is below
+    the threshold, otherwise returns 'Unknown'.
     """
     if not known_faces:
         return "Unknown"
 
-    min_distance = float('inf')
+    face_embedding = np.asarray(face_embedding)
+
+    min_distance = float("inf")
     best_match = "Unknown"
 
     for known_face in known_faces:
@@ -129,25 +153,97 @@ def find_best_match(face_embedding, known_faces, threshold=0.5):
             min_distance = distance
             best_match = known_face["name"]
 
-    # Return name if below threshold, otherwise "Unknown"
     return best_match if min_distance < threshold else "Unknown"
 
 
+# ---------------------------------------------------------------------------
+# Detection & recognition  (Phase 3 / 5 helpers)
+# ---------------------------------------------------------------------------
+def detect_faces(frame, face_cascade):
+    """
+    Run Haar cascade face detection on a single frame.
+
+    Returns:
+        Tuple array of (x, y, w, h) for each detected face.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=MIN_FACE_SIZE,
+    )
+    return faces
+
+
+def recognize_face(face_img, known_faces):
+    """
+    Extract an embedding from a cropped face image and find the best match.
+
+    Returns the matched person's name or 'Unknown'.
+    """
+    try:
+        embedding_objs = DeepFace.represent(
+            img_path=face_img,
+            model_name="Facenet",
+            enforce_detection=False,
+        )
+
+        if embedding_objs:
+            return find_best_match(embedding_objs[0]["embedding"], known_faces)
+    except Exception:
+        pass
+
+    return "Unknown"
+
+
+# ---------------------------------------------------------------------------
+# Drawing helpers  (Phase 6)
+# ---------------------------------------------------------------------------
+def draw_face_label(frame, x, y, w, h, label):
+    """Draw a colored bounding box and name label on the frame."""
+    color = (0, 255, 0) if label != "Unknown" else (0, 0, 255)
+
+    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+
+    label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+    cv2.rectangle(frame, (x, y - 25), (x + label_size[0], y), color, -1)
+    cv2.putText(
+        frame, label, (x, y - 5),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
+    )
+
+
+def draw_fps(frame, fps):
+    """Display an FPS counter in the top-left corner of the frame."""
+    cv2.putText(
+        frame, f"FPS: {fps:.1f}", (10, 25),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
 def main():
     args = parse_args()
     source = get_video_source(args.source)
 
-    # Validate db folder exists
+    # Validate database folder
     if not os.path.isdir(args.db):
         print(f"Error: Database folder not found: {args.db}")
         sys.exit(1)
 
-    # PHASE 4: Load known faces embeddings
+    # Phase 4 — load known-face embeddings
     known_faces = load_known_faces(args.db)
 
-    # Load Haar cascade for face detection
+    # Load Haar cascade
     cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     face_cascade = cv2.CascadeClassifier(cascade_path)
+
+    if face_cascade.empty():
+        print("Error: Failed to load Haar cascade classifier.")
+        sys.exit(1)
 
     # Open video source
     cap = cv2.VideoCapture(source)
@@ -159,72 +255,36 @@ def main():
     print(f"Database folder: {args.db}")
     print("Press 'q' to quit.\n")
 
-    # PHASE 5: Performance optimization - process recognition every N frames
-    PROCESS_EVERY_N_FRAMES = 5
+    # Frame-processing state
     frame_count = 0
-    face_labels = {}  # Store labels for each face: {face_index: "Name"}
+    face_labels = {}
+    prev_time = time.time()
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Convert to grayscale for face detection
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Detect faces every frame (lightweight)
+        faces = detect_faces(frame, face_cascade)
 
-        # Detect faces
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
-
-        # PHASE 5: Perform recognition every N frames
+        # Run recognition only every N frames (expensive)
         if frame_count % PROCESS_EVERY_N_FRAMES == 0:
             face_labels.clear()
-
             for idx, (x, y, w, h) in enumerate(faces):
-                # Crop the face region
-                face_img = frame[y:y+h, x:x+w]
+                face_img = frame[y:y + h, x:x + w]
+                face_labels[idx] = recognize_face(face_img, known_faces)
 
-                try:
-                    # Extract embedding using DeepFace
-                    embedding_objs = DeepFace.represent(
-                        img_path=face_img,
-                        model_name="Facenet",
-                        enforce_detection=False
-                    )
-
-                    if embedding_objs:
-                        face_embedding = embedding_objs[0]["embedding"]
-                        # Find best match
-                        name = find_best_match(face_embedding, known_faces, threshold=0.5)
-                        face_labels[idx] = name
-                    else:
-                        face_labels[idx] = "Unknown"
-
-                except Exception as e:
-                    face_labels[idx] = "Unknown"
-
-        # Draw bounding boxes and labels
+        # Draw results
         for idx, (x, y, w, h) in enumerate(faces):
-            # Get label (use cached label if available)
             label = face_labels.get(idx, "Unknown")
+            draw_face_label(frame, x, y, w, h, label)
 
-            # Choose color based on match
-            color = (0, 255, 0) if label != "Unknown" else (0, 0, 255)
-
-            # Draw bounding box
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-
-            # Draw label background
-            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(frame, (x, y - 25), (x + label_size[0], y), color, -1)
-
-            # Draw label text
-            cv2.putText(frame, label, (x, y - 5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        # FPS counter
+        current_time = time.time()
+        fps = 1.0 / (current_time - prev_time) if current_time != prev_time else 0.0
+        prev_time = current_time
+        draw_fps(frame, fps)
 
         cv2.imshow("Face Recognition", frame)
         frame_count += 1

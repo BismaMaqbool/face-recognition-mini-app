@@ -11,6 +11,7 @@ A Python terminal application that detects faces in real-time from a webcam or v
 | 3 | Face Detection with OpenCV | Done |
 | 4 | Load Known Faces & Embeddings | Done |
 | 5 | Face Recognition & Labeling | Done |
+| 6 | Optimization & Refactoring | Done |
 
 ### Phase 1 — Project Setup & Dependencies
 Initialized the project structure, defined dependencies in `requirements.txt`, and created the `known_faces/` database folder.
@@ -46,6 +47,23 @@ Implemented real-time face recognition with identity matching and labeling. Dete
 - More robust for high-dimensional embeddings (Facenet produces 128-D vectors)
 - Standard metric in face recognition tasks
 
+### Phase 6 — Optimization & Refactoring
+Refactored the codebase for better readability, performance, and robustness. All Phases 1–5 logic and behavior remain unchanged.
+
+**Performance:**
+- Recognition runs every **5 frames** (configurable via `PROCESS_EVERY_N_FRAMES`), with cached labels reused on intermediate frames
+- Added a live **FPS counter** (yellow, top-left corner) for real-time performance monitoring
+
+**Refactoring:**
+- Extracted focused helper functions: `detect_faces()`, `recognize_face()`, `draw_face_label()`, `draw_fps()`
+- Introduced module-level constants: `PROCESS_EVERY_N_FRAMES`, `MATCH_THRESHOLD`, `MIN_FACE_SIZE`, `IMAGE_EXTENSIONS`
+- Organized code into labeled sections (CLI, Database, Comparison, Detection, Drawing, Main)
+
+**Error Handling:**
+- Zero-norm guard in `cosine_distance()` to prevent division by zero
+- Haar cascade load validation (`face_cascade.empty()`) before entering the video loop
+- Explicit warning when no embeddings are loaded from the database
+
 ## Project Structure
 
 ```
@@ -55,8 +73,10 @@ Face_Recog/
 ├── app.py
 ├── README.md
 └── known_faces/
+    ├── .gitkeep
     └── Leen/
-        └── (add face images here)
+        ├── .gitkeep
+        └── (add face images here — ignored by Git)
 ```
 
 ## How to Run
@@ -96,4 +116,4 @@ The `.gitignore` file is configured to exclude the following from version contro
 
 Make sure your virtual environment is created **inside** the project folder (e.g., `.venv/`) so it gets ignored automatically.
 
-**Note:** Since image files are now ignored, the `known_faces/` folder structure will be committed, but the actual face images will not be pushed to GitHub. This protects privacy and keeps the repository size small.
+**Note:** All image files are ignored globally. The `known_faces/` folder structure is preserved on GitHub via `.gitkeep` files, but no actual face images will be pushed. This protects privacy and keeps the repository size small. After cloning, add your own images to each person's subfolder.
