@@ -1,7 +1,7 @@
 # Face Detection + Verification Mini App
 > Forked from [LeenDukmak/face-recognition-mini-app](https://github.com/LeenDukmak/face-recognition-mini-app). Extended with attendance logging (CSV) and a fix for the OpenCV Haar cascade path.
 
-A Python terminal application that detects faces in real-time from a webcam or video file using OpenCV, with a planned face verification pipeline using DeepFace.
+A Python application that detects and recognizes faces in real-time from a webcam or video file using OpenCV and DeepFace (Facenet embeddings + cosine distance), and logs attendance to a CSV file.
 
 ## Current Progress
 
@@ -13,6 +13,7 @@ A Python terminal application that detects faces in real-time from a webcam or v
 | 4 | Load Known Faces & Embeddings | Done |
 | 5 | Face Recognition & Labeling | Done |
 | 6 | Optimization & Refactoring | Done |
+| 7 | Attendance Logging (CSV) | Done |
 
 ### Phase 1 — Project Setup & Dependencies
 Initialized the project structure, defined dependencies in `requirements.txt`, and created the `known_faces/` database folder.
@@ -65,6 +66,18 @@ Refactored the codebase for better readability, performance, and robustness. All
 - Haar cascade load validation (`face_cascade.empty()`) before entering the video loop
 - Explicit warning when no embeddings are loaded from the database
 
+### Phase 7 — Attendance Logging (added in this fork)
+Added `mark_attendance()`, which saves the recognized person's name, date and time to `attendance.csv`. Each person is logged once per day, and unknown faces are never logged. The CSV file is git-ignored to protect personal data.
+
+**Example output (`attendance.csv`):**
+```csv
+Name,Date,Time
+Bisma,2026-10-13,12:25:02
+```
+
+**Other changes in this fork:**
+- Fixed the Haar cascade loading path (now loads `haarcascade_frontalface_default.xml` from the DeepFace weights folder `~/.deepface/weights/`), so the app works with newer OpenCV versions that no longer ship the cascade files.
+
 ## Project Structure
 
 ```
@@ -73,6 +86,7 @@ Face_Recog/
 ├── requirements.txt
 ├── app.py
 ├── README.md
+├── attendance.csv        (generated at runtime — ignored by Git)
 └── known_faces/
     ├── .gitkeep
     └── Leen/
@@ -82,12 +96,29 @@ Face_Recog/
 
 ## How to Run
 
-**Install dependencies:**
+**Requirements:** Python 3.9 – 3.11 (recommended, for TensorFlow/DeepFace compatibility) and a webcam.
+
+**1. Create and activate a virtual environment (Windows PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**2. Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-**Run with webcam:**
+**3. Add your face images:**
+Create a folder per person inside `known_faces/` and add 3–5 clear photos:
+```
+known_faces/
+└── YourName/
+    ├── 1.jpg
+    └── 2.jpg
+```
+
+**4. Run with webcam:**
 ```bash
 python app.py
 ```
@@ -104,6 +135,15 @@ python app.py --source 0 --db ./known_faces
 
 Press `q` to quit the application.
 
+**Note:** On first run, DeepFace downloads the Facenet model (~90 MB) and the Haar cascade file to `~/.deepface/weights/`. An internet connection is required for this step.
+
+## Troubleshooting
+
+- **`ModuleNotFoundError`:** Make sure the virtual environment is activated (the prompt should start with `(.venv)`).
+- **`cv2.imshow` "function is not implemented":** A headless OpenCV build is installed. Run `pip uninstall -y opencv-python-headless opencv-contrib-python-headless` and then `pip install "opencv-python==4.10.0.84" "numpy<2.2"`.
+- **Webcam does not open:** Try a different camera index: `python app.py --source 1`.
+- **Everyone is labeled "Unknown":** Add more clear, front-facing photos to your folder in `known_faces/`.
+
 ## Git & GitHub Notes
 
 The `.gitignore` file is configured to exclude the following from version control:
@@ -113,8 +153,13 @@ The `.gitignore` file is configured to exclude the following from version contro
 - `.env` — Environment variable files
 - `*.mp4`, `*.avi` — Video files (large binaries)
 - `*.jpg`, `*.jpeg`, `*.png`, `*.gif`, `*.webp`, `*.svg`, etc. — Image files (prevents accidentally pushing personal photos from `known_faces/`)
+- `attendance.csv` — Attendance logs (personal data)
 - `.DS_Store` — macOS system files
 
 Make sure your virtual environment is created **inside** the project folder (e.g., `.venv/`) so it gets ignored automatically.
 
 **Note:** All image files are ignored globally. The `known_faces/` folder structure is preserved on GitHub via `.gitkeep` files, but no actual face images will be pushed. This protects privacy and keeps the repository size small. After cloning, add your own images to each person's subfolder.
+
+## Credits
+
+Original project by [LeenDukmak](https://github.com/LeenDukmak/face-recognition-mini-app). Attendance logging and OpenCV compatibility fix added by [BismaMaqbool](https://github.com/BismaMaqbool).
