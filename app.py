@@ -3,6 +3,8 @@ import cv2
 import sys
 import os
 import time
+import csv
+from datetime import datetime
 import numpy as np
 from deepface import DeepFace
 
@@ -222,6 +224,28 @@ def draw_fps(frame, fps):
     )
 
 
+ATTENDANCE_FILE = "attendance.csv"
+marked_today = set()
+
+
+def mark_attendance(name):
+    """Save name, date and time to CSV once per person per day."""
+    if name == "Unknown":
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    key = (name, today)
+    if key in marked_today:
+        return
+    marked_today.add(key)
+
+    file_exists = os.path.isfile(ATTENDANCE_FILE)
+    with open(ATTENDANCE_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Name", "Date", "Time"])
+        writer.writerow([name, today, datetime.now().strftime("%H:%M:%S")])
+    print(f"Attendance marked: {name}")
+
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
@@ -277,6 +301,7 @@ def main():
             for idx, (x, y, w, h) in enumerate(faces):
                 face_img = frame[y:y + h, x:x + w]
                 face_labels[idx] = recognize_face(face_img, known_faces)
+                mark_attendance(face_labels[idx])
 
         # Draw results
         for idx, (x, y, w, h) in enumerate(faces):

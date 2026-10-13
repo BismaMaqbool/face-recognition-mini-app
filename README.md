@@ -1,4 +1,5 @@
 # Face Detection + Verification Mini App
+> Forked from [LeenDukmak/face-recognition-mini-app](https://github.com/LeenDukmak/face-recognition-mini-app). Extended with attendance logging (CSV) and a fix for the OpenCV Haar cascade path.
 
 A Python terminal application that detects faces in real-time from a webcam or video file using OpenCV, with a planned face verification pipeline using DeepFace.
 

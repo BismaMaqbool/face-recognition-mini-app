@@ -22,3 +22,6 @@ env/
 
 # Preserve empty folder structure via .gitkeep
 !.gitkeep
+
+# Attendance logs (personal data)
+attendance.csv
