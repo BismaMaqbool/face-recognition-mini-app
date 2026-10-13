@@ -238,7 +238,10 @@ def main():
     known_faces = load_known_faces(args.db)
 
     # Load Haar cascade
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    cascade_path = os.path.join(
+        os.path.expanduser("~"), ".deepface", "weights",
+        "haarcascade_frontalface_default.xml",
+    )
     face_cascade = cv2.CascadeClassifier(cascade_path)
 
     if face_cascade.empty():
